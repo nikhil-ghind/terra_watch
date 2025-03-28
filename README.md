@@ -54,3 +54,46 @@ Satellite GeoTIFF pairs (before/after)
 | 2 | urban_expansion |
 | 3 | water_shift |
 | 4 | agriculture |
+
+## Tests
+
+```bash
+# Backend tests (pytest, async)
+cd backend && pytest tests/ -v
+```
+
+The `backend/tests/` directory is currently a placeholder; a representative end-to-end check
+against a running stack:
+
+```bash
+# Ingest a scene pair
+curl -X POST http://localhost:8000/scenes -F "before=@tile_t0.tif" -F "after=@tile_t1.tif"
+
+# Fetch detections and corrections for the scene
+curl http://localhost:8000/detections?scene_id=<id>
+curl -X POST http://localhost:8000/corrections \
+  -H "Content-Type: application/json" \
+  -d '{"detection_id":"<id>","corrected_class":1}'
+```
+
+## Evaluation
+
+This is a 5-class classification problem (`no_change`, `deforestation`, `urban_expansion`,
+`water_shift`, `agriculture`). Training (`ml/src/train.py`) computes:
+
+- **Macro F1** on the held-out validation split via `sklearn.metrics.f1_score(..., average="macro")`
+  after each epoch; the best checkpoint is retained.
+- **Per-epoch loss** (cross-entropy) for both train and val splits.
+
+Recommended additional offline metrics to compute on the test split:
+
+| Metric | How to compute |
+|--------|----------------|
+| Per-class precision / recall / F1 | `sklearn.metrics.classification_report` over predictions vs. labels |
+| Confusion matrix | `sklearn.metrics.confusion_matrix`, normalized rows |
+| Macro and weighted ROC-AUC | `roc_auc_score(y_true, y_score, multi_class="ovr")` on RF soft-vote probabilities |
+| Calibration | reliability diagram of predicted confidence vs. empirical accuracy (binned) |
+
+The data split is defined by `ml/data/sample.csv` (`split` column: `train`/`val`/`test`). Run
+`python -m ml.src.train --data_csv ml/data/sample.csv --epochs 20` to reproduce the headline
+macro-F1 number printed at the end of training.
